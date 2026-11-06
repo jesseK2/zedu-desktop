@@ -72,6 +72,24 @@ class NotificationService {
     if (settings.isDndActive) return;
     if (settings.isMuted(senderId)) return;
 
+    // Per-channel overrides (#419): a muted channel shows nothing, mentions
+    // only hides messages that do not mention the reader, and a channel on
+    // the workspace default is unaffected — that is every channel until the
+    // person changes one, so existing behaviour is preserved.
+    final channelLevel = _ref
+        .read(channelNotificationOverridesProvider)
+        .levelFor(channelId);
+    final channelDecision = resolveChannelNotificationDecision(
+      workspaceDefault: NotificationMode.allMessages,
+      level: channelLevel,
+      isMention: messageMentionsUser(
+        message,
+        userId: currentUserId,
+        username: authState.user?.username ?? '',
+      ),
+    );
+    if (!forceShow && !channelDecision.shows) return;
+
     if (!forceShow) {
       final isFocused = await (_isFocused?.call() ?? _defaultIsFocused());
       final selectedChannel = _ref.read(selectedDmProvider)?.channelId;

@@ -9,3 +9,4 @@ export 'channels/channels.dart';
 export 'dms/dms.dart';
 export 'files/files.dart';
 export 'people/people.dart';
+export 'notifications/notifications.dart';
