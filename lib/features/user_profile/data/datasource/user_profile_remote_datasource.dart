@@ -405,7 +405,6 @@ class UserProfileRemoteDataSourceImpl implements UserProfileRemoteDataSource {
   }
 
   @override
-  @override
   Future<List<TeamMemberModel>> getTeamMembers({String? orgId}) async {
     if (_config.usesMockData) {
       List<TeamMemberModel> loadedTeamMembers = [];
@@ -428,29 +427,21 @@ class UserProfileRemoteDataSourceImpl implements UserProfileRemoteDataSource {
         return loadedTeamMembers;
       }
 
-      final list = _members.map(TeamMemberModel.fromJson).toList();
-      // Dynamically generate 1000+ mock members to demonstrate efficient search and scroll!
-      if (list.length < 100) {
-        final roles = ['User', 'Guess', 'Manager', 'Project Lead'];
-        for (int i = 1; i <= 1000; i++) {
-          list.add(
-            TeamMemberModel(
-              id: 'member-mock-$i',
-              email: 'teammate$i@zedu.app',
-              role: roles[i % roles.length],
-              dateJoined: 'May ${i % 20 + 1}, 2026',
-              status: TeamMemberStatus.active,
-              name: 'Teammate $i',
-              avatarUrl: null,
-            ),
-          );
-        }
-      }
-      return list;
+      // Mock mode returns the seeded members only. It used to append 1,000
+      // generated teammates so the list looked busy, which hid the real row
+      // count and made every fabricated row read as Active.
+      return _members.map(TeamMemberModel.fromJson).toList();
     }
 
-    if (orgId == null || orgId.length < 36) {
-      orgId = '019700db-4e22-7f90-a20e-f9116291ef24';
+    // Never guess the organisation. The old fallback swapped in a hard-coded
+    // organisation whenever the id was missing or malformed, so one workspace
+    // could be shown another workspace's roster.
+    if (orgId == null || orgId.isEmpty) {
+      AppLogger.w(
+        'Skipping team members: no organisation selected',
+        tag: _tag,
+      );
+      return [];
     }
 
     try {
@@ -460,22 +451,16 @@ class UserProfileRemoteDataSourceImpl implements UserProfileRemoteDataSource {
       final data = response.data['data'] as List<dynamic>?;
       if (data == null) return [];
 
-      return data.cast<Map<String, dynamic>>().map((user) {
-        // Map backend user to TeamMemberModel
-        return TeamMemberModel(
-          id: user['id'] as String? ?? '',
-          email: user['email'] as String? ?? '',
-          role: user['role'] as String? ?? 'User',
-          dateJoined: user['created_at'] as String? ?? '',
-          status: TeamMemberStatus.active, // Or parse from user['status']
-          name:
-              user['name'] as String? ??
-              user['username'] as String? ??
-              'Unknown',
-          avatarUrl: user['avatar_url'] as String?,
-        );
-      }).toList();
-    } catch (e) {
+      return data
+          .cast<Map<String, dynamic>>()
+          .map(TeamMemberModel.fromOrganisationUser)
+          .toList();
+    } catch (error) {
+      AppLogger.e(
+        'Failed to load team members for organisation $orgId',
+        tag: _tag,
+        error: error,
+      );
       return [];
     }
   }

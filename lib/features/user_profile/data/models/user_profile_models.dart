@@ -254,17 +254,53 @@ class TeamMemberModel extends TeamMember {
       id: json['id'] as String? ?? 'member-1',
       email: json['email'] as String? ?? 'anonymoususer@gmail.com',
       role: json['role'] as String? ?? 'Administrator',
-      dateJoined: json['date_joined'] as String? ?? 'May 3, 2026',
-      status: _statusFromJson(json['status'] as String?),
+      dateJoined:
+          (json['date_joined'] ?? json['created_at']) as String? ??
+          'May 3, 2026',
+      status: parseStatus(json['status'], active: json['is_active']),
       name: json['name'] as String?,
       avatarUrl: json['avatar_url'] as String?,
     );
   }
 
-  static TeamMemberStatus _statusFromJson(String? value) {
-    return switch (value) {
-      'pending' => TeamMemberStatus.pending,
-      'inactive' => TeamMemberStatus.inactive,
+  /// A member row as `/organisations/{orgId}/users` returns it.
+  ///
+  /// That endpoint sends `created_at`, a `status` string and an optional
+  /// `is_active` flag. Both are read here so the People grid and the Invites
+  /// tab see the state the server actually reports instead of a constant.
+  factory TeamMemberModel.fromOrganisationUser(Map<String, dynamic> json) {
+    return TeamMemberModel(
+      id: json['id'] as String? ?? '',
+      email: json['email'] as String? ?? '',
+      role: json['role'] as String? ?? 'User',
+      dateJoined:
+          (json['created_at'] ?? json['date_joined']) as String? ?? '',
+      status: parseStatus(json['status'], active: json['is_active']),
+      name:
+          json['name'] as String? ??
+          json['username'] as String? ??
+          'Unknown',
+      avatarUrl: json['avatar_url'] as String?,
+    );
+  }
+
+  /// One status mapping for every payload that describes a member.
+  ///
+  /// The API is inconsistent about case and vocabulary, and the previous
+  /// switch matched only `pending` and `inactive` exactly, so anything else
+  /// (a capitalised `Pending`, an `invited`, a `deactivated`, an
+  /// `is_active: false`) collapsed to `active`. That is what made every
+  /// teammate read as online and left the Invites list always empty.
+  /// Matching is case-insensitive and lives in a single place so the two
+  /// member endpoints cannot drift apart.
+  static TeamMemberStatus parseStatus(Object? value, {Object? active}) {
+    if (active is bool && !active) return TeamMemberStatus.inactive;
+    final raw = value is String ? value.trim().toLowerCase() : '';
+    return switch (raw) {
+      'pending' || 'invited' || 'awaiting' || 'awaiting_acceptance' =>
+        TeamMemberStatus.pending,
+      'inactive' || 'deactivated' || 'disabled' || 'suspended' || 'removed' =>
+        TeamMemberStatus.inactive,
       _ => TeamMemberStatus.active,
     };
   }
